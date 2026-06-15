@@ -1,23 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { load } from '@tauri-apps/plugin-store'
-
-const memo = ref('')
-let store: Awaited<ReturnType<typeof load>> | null = null
-let saveTimer: ReturnType<typeof setTimeout> | null = null
-
-onMounted(async () => {
-  store = await load('sticky-data.json', { autoSave: true })
-  const saved = await store.get<string>('memo')
-  if (saved) memo.value = saved
-})
-
-function onInput() {
-  if (saveTimer) clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
-    await store?.set('memo', memo.value)
-  }, 500)
-}
+const memo = defineModel<string>({ default: '' })
 </script>
 
 <template>
@@ -25,7 +7,6 @@ function onInput() {
     v-model="memo"
     class="memo-textarea"
     placeholder="随便写点什么..."
-    @input="onInput"
   />
 </template>
 

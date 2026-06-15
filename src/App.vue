@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch, provide } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { load } from '@tauri-apps/plugin-store'
 import MemoArea from './components/MemoArea.vue'
 import TodoList from './components/TodoList.vue'
 import LinkList from './components/LinkList.vue'
+import AiChat from './components/AiChat.vue'
 
 const themes = [
   { name: '橘子', header: '#FF9843', bg: '#FFF8F0', shadow: 'rgba(255,152,67,0.3)' },
@@ -14,17 +15,21 @@ const themes = [
   { name: '草莓', header: '#FF6B81', bg: '#FFF0F3', shadow: 'rgba(255,107,129,0.3)' },
 ]
 
-type TabType = 'memo' | 'todo' | 'links'
+type TabType = 'memo' | 'todo' | 'links' | 'ai'
 
 const activeTab = ref<TabType>('memo')
 const themeIndex = ref(0)
 const theme = ref(themes[0])
 const showLinks = ref(false)
+const memoText = ref('')
+
+provide('memo', memoText)
 
 const tabs = computed(() => {
   const base: { key: TabType; label: string }[] = [
     { key: 'memo', label: '备忘' },
     { key: 'todo', label: '待办' },
+    { key: 'ai', label: 'AI' },
   ]
   if (showLinks.value) {
     base.push({ key: 'links', label: '常用' })
@@ -37,16 +42,21 @@ const activeTabIndex = computed(() => {
 })
 
 let store: Awaited<ReturnType<typeof load>> | null = null
+let memoSaveTimer: ReturnType<typeof setTimeout> | null = null
 
 onMounted(async () => {
-  store = await load('sticky-data.json', { autoSave: true })
+  store = await load('sticky-data.json', { autoSave: true, defaults: {} })
+  const savedMemo = await store.get<string>('memo')
+  if (savedMemo) {
+    memoText.value = savedMemo
+  }
   const saved = await store.get<number>('themeIndex')
   if (saved !== null && saved !== undefined) {
     themeIndex.value = saved
     theme.value = themes[saved]
   }
   const savedTab = await store.get<string>('activeTab')
-  if (savedTab === 'memo' || savedTab === 'todo' || savedTab === 'links') {
+  if (savedTab === 'memo' || savedTab === 'todo' || savedTab === 'links' || savedTab === 'ai') {
     activeTab.value = savedTab
   }
   const savedShowLinks = await store.get<boolean>('showLinks')
@@ -72,6 +82,13 @@ watch(showLinks, async (val) => {
   if (!val && activeTab.value === 'links') {
     activeTab.value = 'memo'
   }
+})
+
+watch(memoText, (text) => {
+  if (memoSaveTimer) clearTimeout(memoSaveTimer)
+  memoSaveTimer = setTimeout(async () => {
+    await store?.set('memo', text)
+  }, 500)
 })
 
 function selectTheme(i: number) {
@@ -148,8 +165,9 @@ async function closeWindow() {
     </div>
 
     <div class="content">
-      <MemoArea v-if="activeTab === 'memo'" />
+      <MemoArea v-if="activeTab === 'memo'" v-model="memoText" />
       <TodoList v-else-if="activeTab === 'todo'" />
+      <AiChat v-else-if="activeTab === 'ai'" />
       <LinkList v-else-if="activeTab === 'links'" />
     </div>
 

@@ -14,7 +14,7 @@ let store: Awaited<ReturnType<typeof load>> | null = null
 let nextId = 1
 
 onMounted(async () => {
-  store = await load('sticky-data.json', { autoSave: true })
+  store = await load('sticky-data.json', { autoSave: true, defaults: {} })
   const saved = await store.get<Todo[]>('todos')
   if (saved && Array.isArray(saved)) {
     todos.value = saved
