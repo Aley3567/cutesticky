@@ -11,12 +11,18 @@ let startupTimer: number | null = null
 
 onMounted(() => {
   if (!import.meta.env.PROD) return
+  document.addEventListener('visibilitychange', checkWhenVisible)
   startupTimer = window.setTimeout(() => void checkForUpdates(false), 2400)
 })
 
 onBeforeUnmount(() => {
   if (startupTimer !== null) window.clearTimeout(startupTimer)
+  document.removeEventListener('visibilitychange', checkWhenVisible)
 })
+
+function checkWhenVisible() {
+  if (document.visibilityState === 'visible') void checkForUpdates(false)
+}
 
 const busyPhases = new Set(['downloading', 'installing', 'restarting'])
 </script>

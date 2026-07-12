@@ -2,6 +2,9 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 const styles = readFileSync(new URL('../src/style.css', import.meta.url), 'utf8')
+const tauriConfig = JSON.parse(
+  readFileSync(new URL('../src-tauri/tauri.conf.json', import.meta.url), 'utf8'),
+) as { app: { windows: Array<{ minWidth?: number; minHeight?: number }> } }
 
 function declarationFor(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -22,5 +25,9 @@ describe('desktop window layout contract', () => {
 
     expect(webRule).toContain('360px')
     expect(webRule).toContain('480px')
+  })
+
+  it('prevents resizing below the layout design floor', () => {
+    expect(tauriConfig.app.windows[0]).toMatchObject({ minWidth: 360, minHeight: 480 })
   })
 })

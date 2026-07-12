@@ -9,6 +9,7 @@ import PomodoroTimer from './components/PomodoroTimer.vue'
 import WeatherView from './components/WeatherView.vue'
 import DataBackup from './components/DataBackup.vue'
 import UpdatePrompt from './components/UpdatePrompt.vue'
+import PwaUpdatePrompt from './components/PwaUpdatePrompt.vue'
 import { loadStickyStore, type StickyStore } from './services/stickyStore'
 import { notes, persistNotes } from './services/notesStore'
 import { initializePomodoro } from './services/pomodoroStore'
@@ -86,6 +87,7 @@ watch(activeTab, async (tab) => { await store?.set('activeTab', tab) })
 
 async function closeWindow() {
   await persistNotes()
+  await store?.save()
   await closeAppWindow()
 }
 
@@ -212,6 +214,7 @@ function handleGlobalKeydown(event: KeyboardEvent) {
       </div>
     </div>
     <UpdatePrompt v-if="!isWebRuntime" />
+    <PwaUpdatePrompt v-else />
   </div>
 </template>
 
