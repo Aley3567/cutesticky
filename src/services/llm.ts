@@ -1,5 +1,5 @@
-import { fetch } from '@tauri-apps/plugin-http'
-import { load } from '@tauri-apps/plugin-store'
+import { loadStickyStore } from './stickyStore'
+import { isDesktopRuntime, platformFetch } from '../platform'
 
 export interface LlmConfig {
   baseUrl: string
@@ -12,8 +12,19 @@ export interface ChatMessage {
   content: string
 }
 
+export interface StreamChatCallbacks {
+  onChunk: (text: string) => void
+  onDone: () => void
+  onError: (err: string) => void
+  onAbort?: () => void
+}
+
+const MAX_CONTEXT_MESSAGES = 24
+const MAX_CONTEXT_CHARS = 24_000
+
+// Base URL 不预设第三方端点，由用户在设置中自行填写
 const DEFAULT_CONFIG: LlmConfig = {
-  baseUrl: 'https://api.vectorengine.ai',
+  baseUrl: '',
   apiKey: '',
   model: 'claude-opus-4-6',
 }
@@ -22,16 +33,17 @@ let cachedConfig: LlmConfig | null = null
 
 export async function loadConfig(): Promise<LlmConfig> {
   if (cachedConfig) return cachedConfig
-  const store = await load('sticky-data.json', { autoSave: true, defaults: {} })
+  const store = await loadStickyStore()
   const saved = await store.get<LlmConfig>('llmConfig')
   cachedConfig = saved ? { ...DEFAULT_CONFIG, ...saved } : { ...DEFAULT_CONFIG }
   return cachedConfig
 }
 
 export async function saveConfig(config: LlmConfig): Promise<void> {
-  const store = await load('sticky-data.json', { autoSave: true, defaults: {} })
-  await store.set('llmConfig', config)
-  cachedConfig = config
+  const store = await loadStickyStore()
+  const snapshot = { ...config }
+  await store.set('llmConfig', snapshot)
+  cachedConfig = snapshot
 }
 
 export const PRESETS: Record<string, string> = {
@@ -41,28 +53,128 @@ export const PRESETS: Record<string, string> = {
   organize: '请将以下内容整理成清晰的待办清单，每项一行，用"- "开头：',
 }
 
+export function isTauriRuntime(): boolean {
+  return isDesktopRuntime
+}
+
+/**
+ * Keep recent context within a predictable request budget. Consecutive messages
+ * from the same role are folded together because the Anthropic API expects
+ * alternating turns.
+ */
+export function boundChatHistory(
+  messages: ChatMessage[],
+  maxMessages = MAX_CONTEXT_MESSAGES,
+  maxChars = MAX_CONTEXT_CHARS,
+): ChatMessage[] {
+  const recent: ChatMessage[] = []
+  let chars = 0
+
+  for (let index = messages.length - 1; index >= 0 && recent.length < maxMessages; index -= 1) {
+    const message = messages[index]
+    const remaining = maxChars - chars
+    if (remaining <= 0) break
+
+    if (message.content.length > remaining) {
+      // Always retain at least the newest turn, but do not send an unbounded prompt.
+      if (recent.length === 0) {
+        recent.push({ ...message, content: `${message.content.slice(0, Math.max(0, remaining - 12))}\n[内容已截断]` })
+      }
+      break
+    }
+
+    recent.push({ ...message })
+    chars += message.content.length
+  }
+
+  const chronological = recent.reverse()
+  while (chronological[0]?.role === 'assistant') chronological.shift()
+
+  return chronological.reduce<ChatMessage[]>((result, message) => {
+    const previous = result[result.length - 1]
+    if (previous?.role === message.role) {
+      previous.content += `\n\n${message.content}`
+    } else {
+      result.push({ ...message })
+    }
+    return result
+  }, [])
+}
+
+function validateConfig(config: LlmConfig): string | null {
+  if (!config.baseUrl.trim()) return '请先在设置中填写 Base URL'
+  if (!config.apiKey.trim()) return '请先在设置中填写 API Key'
+  if (!config.model.trim()) return '请先在设置中填写 Model'
+  return null
+}
+
+function requestFetch(input: string, init: RequestInit): Promise<Response> {
+  return platformFetch(input, init)
+}
+
+export function formatRequestError(
+  error: unknown,
+  desktop = isTauriRuntime(),
+  online = typeof navigator === 'undefined' || navigator.onLine !== false,
+): string {
+  const detail = error instanceof Error ? error.message : String(error)
+  if (!desktop && !online) {
+    return '当前离线，连接网络后再试。'
+  }
+  if (!desktop) {
+    return `浏览器无法访问该接口（可能被 CORS 拦截）。请确认服务允许当前 localhost 来源，或改用桌面端。${detail ? `\n${detail}` : ''}`
+  }
+  return `请求失败: ${detail}`
+}
+
+export async function testConnection(config: LlmConfig, signal?: AbortSignal): Promise<string> {
+  const configError = validateConfig(config)
+  if (configError) throw new Error(configError)
+
+  const baseUrl = config.baseUrl.trim().replace(/\/+$/, '')
+  try {
+    const response = await requestFetch(`${baseUrl}/v1/messages`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': config.apiKey.trim(),
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: config.model.trim(),
+        max_tokens: 1,
+        stream: false,
+        messages: [{ role: 'user', content: 'Reply OK.' }],
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 800)
+      throw new Error(`API 错误 ${response.status}: ${detail}`)
+    }
+    return `连接成功 · ${config.model.trim()}`
+  } catch (error) {
+    if (signal?.aborted) throw error
+    if (error instanceof Error && error.message.startsWith('API 错误')) throw error
+    throw new Error(formatRequestError(error))
+  }
+}
+
 export async function streamChat(
   messages: ChatMessage[],
   systemPrompt: string | null,
-  onChunk: (text: string) => void,
-  onDone: () => void,
-  onError: (err: string) => void,
+  callbacks: StreamChatCallbacks,
+  signal?: AbortSignal,
 ): Promise<void> {
   const config = await loadConfig()
   const baseUrl = config.baseUrl.trim().replace(/\/+$/, '')
   const model = config.model.trim()
   const apiKey = config.apiKey.trim()
 
-  if (!baseUrl) {
-    onError('请先在设置中填写 Base URL')
-    return
-  }
-  if (!apiKey) {
-    onError('请先在设置中填写 API Key')
-    return
-  }
-  if (!model) {
-    onError('请先在设置中填写 Model')
+  const configError = validateConfig(config)
+  if (configError) {
+    callbacks.onError(configError)
     return
   }
 
@@ -70,14 +182,14 @@ export async function streamChat(
     model,
     max_tokens: 2048,
     stream: true,
-    messages: messages.map(m => ({ role: m.role, content: m.content })),
+    messages: boundChatHistory(messages).map(m => ({ role: m.role, content: m.content })),
   }
   if (systemPrompt) {
     body.system = systemPrompt
   }
 
   try {
-    const response = await fetch(`${baseUrl}/v1/messages`, {
+    const response = await requestFetch(`${baseUrl}/v1/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,17 +197,18 @@ export async function streamChat(
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify(body),
+      signal,
     })
 
     if (!response.ok) {
       const errText = await response.text()
-      onError(`API 错误 ${response.status}: ${errText}`)
+      callbacks.onError(`API 错误 ${response.status}: ${errText.slice(0, 800)}`)
       return
     }
 
     const reader = response.body?.getReader()
     if (!reader) {
-      onError('无法读取响应流')
+      callbacks.onError('无法读取响应流')
       return
     }
 
@@ -118,9 +231,9 @@ export async function streamChat(
         try {
           const event = JSON.parse(data)
           if (event.type === 'content_block_delta' && event.delta?.text) {
-            onChunk(event.delta.text)
+            callbacks.onChunk(event.delta.text)
           } else if (event.type === 'error') {
-            onError(event.error?.message || '流式响应错误')
+            callbacks.onError(event.error?.message || '流式响应错误')
             return
           }
         } catch {
@@ -129,8 +242,12 @@ export async function streamChat(
       }
     }
 
-    onDone()
+    callbacks.onDone()
   } catch (err) {
-    onError(`请求失败: ${err}`)
+    if (signal?.aborted || (err instanceof DOMException && err.name === 'AbortError')) {
+      callbacks.onAbort?.()
+      return
+    }
+    callbacks.onError(formatRequestError(err))
   }
 }

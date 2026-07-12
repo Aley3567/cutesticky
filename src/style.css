@@ -1,19 +1,99 @@
+/* ============================================================
+   Cream Clay 设计 token
+   圆角仅 3 档、间距 4px 网格、阴影仅 2 种（raised / pressed）。
+   主题四变量（--accent-color / --accent-soft / --surface-color /
+   --tint-color）由 App.vue 按当前主题注入，其余均为静态 token。
+   ============================================================ */
+:root {
+  --font: -apple-system, 'SF Pro Rounded', 'PingFang SC', system-ui, sans-serif;
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 24px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* 中性墨色，不随主题变 */
+  --cream: #FBF6EF;
+  --ink-1: rgba(43, 38, 33, 0.88);
+  --ink-2: rgba(43, 38, 33, 0.52);
+  --ink-3: rgba(43, 38, 33, 0.28);
+  --line: rgba(43, 38, 33, 0.08);
+
+  --shadow-raised:
+      0 8px 18px rgba(43, 38, 33, 0.10),
+      0 2px 4px rgba(43, 38, 33, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --shadow-pressed:
+      inset 0 2px 5px rgba(43, 38, 33, 0.12),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.6);
+
+  /* 旧变量名兼容映射 */
+  --text-primary: var(--ink-1);
+  --text-secondary: var(--ink-2);
+}
+
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
 }
 
-html, body, #app {
+html, body {
   height: 100%;
+  width: 100%;
   background: transparent;
-  font-family: 'SF Pro Rounded', -apple-system, system-ui, sans-serif;
+  font-family: var(--font);
+  color: var(--ink-1);
   user-select: none;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+html[data-runtime='web'] body {
+  place-items: start center;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 22% 14%, rgba(255, 140, 85, 0.13), transparent 34%),
+    radial-gradient(circle at 78% 82%, rgba(156, 118, 189, 0.10), transparent 32%),
+    #f7f1eb;
+}
+
+body {
+  display: grid;
+  place-items: stretch;
+  padding: 0;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+}
+
+html[data-runtime='web'] #app {
+  width: min(calc(100vw - 24px), 360px);
+  height: min(calc(100vh - 24px), 480px);
+}
+
+@media (max-width: 384px), (max-height: 504px) {
+  html[data-runtime='web'] body {
+    padding: 0;
+  }
+
+  html[data-runtime='web'] #app {
+    width: 100vw;
+    height: 100vh;
+  }
 }
 
 input, textarea {
   user-select: text;
+  font-family: inherit;
 }
 
 ::-webkit-scrollbar {
@@ -25,10 +105,10 @@ input, textarea {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(43, 38, 33, 0.10);
   border-radius: 2px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(43, 38, 33, 0.18);
 }

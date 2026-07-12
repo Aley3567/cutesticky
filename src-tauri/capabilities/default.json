@@ -12,6 +12,7 @@
     "store:default",
     "shell:allow-open",
     "http:default",
+    "notification:default",
     {
       "identifier": "http:allow-fetch",
       "allow": [
