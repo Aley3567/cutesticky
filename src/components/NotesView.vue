@@ -22,6 +22,7 @@ interface UndoDelete {
 const listEl = ref<HTMLDivElement>()
 const searchQuery = ref('')
 const draggedId = ref<number | null>(null)
+const openPaletteId = ref<number | null>(null)
 const undoDelete = ref<UndoDelete | null>(null)
 const notice = ref('')
 
@@ -44,6 +45,7 @@ onActivated(() => {
 
 onDeactivated(() => {
   window.removeEventListener('keydown', onGlobalShortcut)
+  openPaletteId.value = null
 })
 
 onUnmounted(() => {
@@ -61,6 +63,7 @@ function onGlobalShortcut(event: KeyboardEvent) {
 }
 
 function onEdit(note: Note) {
+  openPaletteId.value = null
   note.updatedAt = Date.now()
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(persistNotes, 500)
@@ -74,6 +77,11 @@ function formatTime(timestamp: number): string {
 function noteStyle(note: Note) {
   const palette = NOTE_COLORS[note.color] ?? NOTE_COLORS[0]
   return { '--note-accent': palette.accent, '--note-tint': palette.tint }
+}
+
+function chooseColor(noteId: number, color: number) {
+  setColor(noteId, color)
+  openPaletteId.value = null
 }
 
 async function addNote() {
@@ -213,16 +221,31 @@ const vGrow = { mounted: growTextarea, updated: growTextarea }
         <div class="note-foot">
           <span class="note-time">{{ formatTime(note.updatedAt) }}</span>
           <span class="note-tools">
-            <button
-              v-for="(color, index) in NOTE_COLORS"
-              :key="color.name"
-              class="color-dot"
-              :class="{ sel: note.color === index }"
-              :style="{ background: color.accent }"
-              :title="color.name"
-              :aria-label="`设为${color.name}色`"
-              @click="setColor(note.id, index)"
-            />
+            <span class="color-control">
+              <button
+                class="tool-btn color-trigger"
+                title="更换颜色"
+                aria-label="更换便签颜色"
+                :aria-expanded="openPaletteId === note.id"
+                @click.stop="openPaletteId = openPaletteId === note.id ? null : note.id"
+              >
+                <i :style="{ background: NOTE_COLORS[note.color]?.accent || NOTE_COLORS[0].accent }" />
+              </button>
+              <Transition name="palette-pop">
+                <span v-if="openPaletteId === note.id" class="color-menu" @click.stop>
+                  <button
+                    v-for="(color, index) in NOTE_COLORS"
+                    :key="color.name"
+                    class="color-dot"
+                    :class="{ sel: note.color === index }"
+                    :style="{ background: color.accent }"
+                    :title="color.name"
+                    :aria-label="`设为${color.name}色`"
+                    @click="chooseColor(note.id, index)"
+                  />
+                </span>
+              </Transition>
+            </span>
             <button class="tool-btn" :disabled="!note.text.trim()" @click="convertToTodo(note)" title="加入待办" aria-label="加入待办">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M4 12l4 4 8-9M14 16h6"/>
@@ -356,6 +379,7 @@ const vGrow = { mounted: growTextarea, updated: growTextarea }
 .note-list {
   display: flex;
   flex-direction: column;
+  flex: 1;
   gap: var(--space-2);
   overflow-y: auto;
   min-height: 0;
@@ -364,48 +388,92 @@ const vGrow = { mounted: growTextarea, updated: growTextarea }
 
 .note {
   position: relative;
-  background: var(--surface-color);
-  background-image: linear-gradient(180deg, var(--note-tint) 0%, var(--surface-color) 90%);
+  border: 1px solid color-mix(in srgb, var(--note-accent) 8%, white);
+  background: color-mix(in srgb, var(--surface-color) 88%, var(--note-tint));
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-raised);
-  padding: var(--space-3) var(--space-4) var(--space-2);
+  box-shadow: 0 6px 16px rgba(43, 38, 33, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  padding: 13px 14px 9px 16px;
   flex: none;
   transition: opacity 0.15s ease, transform 0.15s ease;
 }
+.note::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 6px;
+  width: 3px;
+  border-radius: 99px;
+  background: var(--note-accent);
+  content: '';
+  opacity: 0.72;
+}
 .note.dragging { opacity: 0.45; transform: scale(0.99); }
+.note:only-child { min-height: 100%; display: flex; flex-direction: column; }
+.note:only-child .note-text { flex: 1; max-height: none; }
 .pin-mark { position: absolute; top: 10px; right: 12px; width: 12px; height: 12px; color: var(--note-accent); }
 
 .note-text {
   width: 100%;
   min-height: 22px;
+  max-height: 184px;
+  padding: 1px 2px 6px 0;
   border: none;
   outline: none;
   resize: none;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background: transparent;
   font-family: inherit;
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: 13.5px;
+  line-height: 1.62;
   color: var(--ink-1);
   user-select: text;
 }
 .note-text::placeholder { color: var(--ink-3); }
 
-.note-foot { display: flex; align-items: center; margin-top: var(--space-1); min-height: 20px; }
+.note-foot {
+  display: flex;
+  align-items: center;
+  min-height: 25px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--note-accent) 10%, transparent);
+}
 .note-time { font-size: 10px; font-weight: 600; color: var(--ink-3); white-space: nowrap; }
 .note-tools {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 4px;
-  opacity: 0;
+  gap: 3px;
+  opacity: 0.58;
   transition: opacity 0.15s ease;
 }
 .note:hover .note-tools, .note:focus-within .note-tools { opacity: 1; }
 
-.color-dot {
+.color-control { position: relative; display: flex; }
+.color-trigger i {
   width: 10px;
   height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(43, 38, 33, 0.16);
+}
+.color-menu {
+  position: absolute;
+  z-index: 4;
+  right: -4px;
+  bottom: 24px;
+  display: flex;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-color);
+  box-shadow: 0 10px 22px rgba(43, 38, 33, 0.16);
+}
+
+.color-dot {
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: none;
   padding: 0;
@@ -413,6 +481,8 @@ const vGrow = { mounted: growTextarea, updated: growTextarea }
   box-shadow: 0 1px 2px rgba(43, 38, 33, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 .color-dot.sel { outline: 2px solid rgba(43, 38, 33, 0.18); outline-offset: 1px; }
+.palette-pop-enter-active, .palette-pop-leave-active { transition: opacity .14s ease, transform .14s ease; }
+.palette-pop-enter-from, .palette-pop-leave-to { opacity: 0; transform: translateY(3px) scale(.96); }
 
 .tool-btn {
   width: 18px;
