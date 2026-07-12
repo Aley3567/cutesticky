@@ -24,6 +24,16 @@ export const updateState = reactive({
 let pendingUpdate: Update | null = null
 let checkingPromise: Promise<void> | null = null
 let feedbackTimer: number | null = null
+let lastAutomaticCheckAt = 0
+
+export const AUTOMATIC_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000
+
+export function automaticUpdateCheckDue(
+  now = Date.now(),
+  lastCheckedAt = lastAutomaticCheckAt,
+): boolean {
+  return lastCheckedAt === 0 || now - lastCheckedAt >= AUTOMATIC_UPDATE_INTERVAL_MS
+}
 
 function clearFeedbackTimer() {
   if (feedbackTimer !== null) window.clearTimeout(feedbackTimer)
@@ -48,10 +58,12 @@ export function updateDownloadProgress(downloaded: number, total?: number): numb
 export async function checkForUpdates(manual = false): Promise<void> {
   if (!isDesktopRuntime) return
   if (updateState.phase === 'available' && pendingUpdate) {
-    updateState.visible = true
+    if (manual) updateState.visible = true
     return
   }
+  if (!manual && !automaticUpdateCheckDue()) return
   if (checkingPromise) return checkingPromise
+  lastAutomaticCheckAt = Date.now()
 
   checkingPromise = (async () => {
     clearFeedbackTimer()

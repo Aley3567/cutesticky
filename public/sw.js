@@ -1,4 +1,5 @@
-const CACHE_NAME = 'cute-sticky-shell-v1'
+const releaseVersion = new URL(self.location.href).searchParams.get('v') || 'dev'
+const CACHE_NAME = `cute-sticky-shell-${releaseVersion}`
 const CORE_FILES = [
   '/',
   '/manifest.webmanifest',

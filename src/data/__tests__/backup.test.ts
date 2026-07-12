@@ -5,6 +5,7 @@ import {
   importBackup,
   parseBackup,
   previewBackup,
+  restoreLastImport,
   serializeBackup,
 } from '../backup'
 import { runDataMigrations } from '../migrations'
@@ -103,6 +104,20 @@ describe('data backup', () => {
     expect(await store.get('todos')).toBeUndefined()
     expect(await store.get(LAST_IMPORT_BACKUP_KEY)).toEqual(expect.any(String))
     expect(await store.get(SCHEMA_VERSION_KEY)).toBe(CURRENT_SCHEMA_VERSION)
+  })
+
+  it('restores the automatic pre-import recovery backup exactly once', async () => {
+    const store = new MemoryStore()
+    store.values.set('notes', ['before'])
+    store.values.set('todos', ['keep'])
+
+    await importBackup(store, backup({ notes: ['after'] }))
+
+    expect(await restoreLastImport(store)).toBe(true)
+    expect(await store.get('notes')).toEqual(['before'])
+    expect(await store.get('todos')).toEqual(['keep'])
+    expect(await store.get(LAST_IMPORT_BACKUP_KEY)).toBeUndefined()
+    expect(await restoreLastImport(store)).toBe(false)
   })
 
   it('preserves the local API key when a full backup omits that secret', async () => {

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "cute-sticky",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "identifier": "com.cute.sticky",
   "build": {
     "frontendDist": "../dist",
@@ -17,6 +17,8 @@
         "title": "cute-sticky",
         "width": 360,
         "height": 480,
+        "minWidth": 360,
+        "minHeight": 480,
         "resizable": true,
         "fullscreen": false,
         "decorations": false,

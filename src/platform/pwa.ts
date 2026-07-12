@@ -3,6 +3,10 @@ import { isWebRuntime } from '.'
 
 type GameChunkLoader = () => Promise<unknown>
 
+export function serviceWorkerUrl(version = import.meta.env.VITE_APP_VERSION || 'dev'): string {
+  return `/sw.js?v=${encodeURIComponent(version)}`
+}
+
 export async function preloadOfflineGameChunks(
   loaders: GameChunkLoader[] = GAMES.map(game => game.component),
 ): Promise<void> {
@@ -50,7 +54,7 @@ export function registerPwa(): void {
   if (!isWebRuntime || !import.meta.env.PROD || !('serviceWorker' in navigator)) return
 
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').then((registration) => {
+    navigator.serviceWorker.register(serviceWorkerUrl()).then((registration) => {
       preloadCoreOfflineFeatures()
       registration.addEventListener('updatefound', () => {
         const worker = registration.installing

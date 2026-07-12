@@ -3,11 +3,13 @@ import {
   createBackup,
   importBackup,
   parseBackup,
+  restoreLastImport as restoreLastImportBackup,
   type BackupOptions,
   type ImportOptions,
   type ImportResult,
 } from './backup'
 import type { BackupEnvelope } from './schema'
+import { LAST_IMPORT_BACKUP_KEY } from './schema'
 
 export class DataRepository {
   private readonly store: StickyStore
@@ -37,6 +39,14 @@ export class DataRepository {
 
   import(source: string | BackupEnvelope, options?: ImportOptions): Promise<ImportResult> {
     return importBackup(this.store, typeof source === 'string' ? parseBackup(source) : source, options)
+  }
+
+  async hasImportRecovery(): Promise<boolean> {
+    return Boolean(await this.store.get<string>(LAST_IMPORT_BACKUP_KEY))
+  }
+
+  restoreLastImport(): Promise<boolean> {
+    return restoreLastImportBackup(this.store)
   }
 }
 

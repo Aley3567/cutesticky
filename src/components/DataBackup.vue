@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef } from 'vue'
+import { computed, onMounted, ref, shallowRef } from 'vue'
 import {
   BACKUP_MODULE_OPTIONS,
   createSampleBackup,
@@ -20,6 +20,12 @@ const fileInput = ref<HTMLInputElement>()
 const pendingBackup = shallowRef<BackupEnvelope | null>(null)
 const pendingPreview = shallowRef<BackupPreview | null>(null)
 const selectedModules = ref<BackupModule[]>([])
+const canRestoreImport = ref(false)
+let reloadTimer: number | null = null
+
+onMounted(async () => {
+  canRestoreImport.value = await (await loadDataRepository()).hasImportRecovery()
+})
 
 const availableModules = computed(() => BACKUP_MODULE_OPTIONS.filter(
   option => Boolean(pendingPreview.value?.modules[option.key]),
@@ -83,7 +89,8 @@ async function confirmImport() {
   status.value = ''
   try {
     await (await loadDataRepository()).import(pendingBackup.value, { modules: selectedModules.value })
-    status.value = `已替换${selectedLabels.value.join('、')}，请重新打开应用载入全部数据`
+    canRestoreImport.value = true
+    scheduleReload(`已替换${selectedLabels.value.join('、')}，正在重新载入…`)
     cancelImport()
   } catch (error) {
     status.value = `导入失败：${error instanceof Error ? error.message : String(error)}`
@@ -104,12 +111,38 @@ async function loadSampleData() {
   status.value = ''
   try {
     await (await loadDataRepository()).import(createSampleBackup())
-    status.value = '示例数据已载入，请重新打开应用查看'
+    canRestoreImport.value = true
+    scheduleReload('示例数据已载入，正在重新载入…')
   } catch (error) {
     status.value = `载入失败：${error instanceof Error ? error.message : String(error)}`
   } finally {
     busy.value = false
   }
+}
+
+async function restoreImport() {
+  busy.value = true
+  status.value = ''
+  try {
+    const restored = await (await loadDataRepository()).restoreLastImport()
+    if (!restored) {
+      canRestoreImport.value = false
+      status.value = '没有可恢复的导入前数据'
+      return
+    }
+    canRestoreImport.value = false
+    scheduleReload('已恢复导入前数据，正在重新载入…')
+  } catch (error) {
+    status.value = `恢复失败：${error instanceof Error ? error.message : String(error)}`
+  } finally {
+    busy.value = false
+  }
+}
+
+function scheduleReload(message: string) {
+  status.value = message
+  if (reloadTimer !== null) window.clearTimeout(reloadTimer)
+  reloadTimer = window.setTimeout(() => window.location.reload(), 900)
 }
 </script>
 
@@ -129,6 +162,7 @@ async function loadSampleData() {
     <div class="backup-actions">
       <button :disabled="busy" @click="exportData">导出备份</button>
       <button :disabled="busy" @click="fileInput?.click()">导入备份</button>
+      <button v-if="canRestoreImport" :disabled="busy" class="restore-btn" @click="restoreImport">撤销上次导入</button>
       <button v-if="isWebRuntime" :disabled="busy" @click="loadSampleData">示例数据</button>
       <input ref="fileInput" type="file" accept="application/json,.json" hidden @change="stageImport" />
     </div>
@@ -231,6 +265,12 @@ button:disabled {
 
 .backup-status {
   color: var(--accent-color);
+}
+
+.restore-btn {
+  color: var(--ink-2);
+  background: var(--surface-color);
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .import-preview {
